@@ -232,13 +232,13 @@ class Unich:
                 self.log(
                     f"{Fore.MAGENTA + Style.BRIGHT}[ Task{Style.RESET_ALL}"
                     f"{Fore.GREEN + Style.BRIGHT} Is Completed {Style.RESET_ALL}"
-                    f"{Fore.MAGENTA + Style.BRIGHT} ]{Style.RESET_ALL}"
+                    f"{Fore.MAGENTA + Style.BRIGHT}]{Style.RESET_ALL}"
                 )
         else:
             self.log(
                 f"{Fore.MAGENTA + Style.BRIGHT}[ Task{Style.RESET_ALL}"
                 f"{Fore.RED + Style.BRIGHT} Data Is None {Style.RESET_ALL}"
-                f"{Fore.MAGENTA + Style.BRIGHT} ]{Style.RESET_ALL}"
+                f"{Fore.MAGENTA + Style.BRIGHT}]{Style.RESET_ALL}"
             )
 
         mining = await self.mining_recent(token)
