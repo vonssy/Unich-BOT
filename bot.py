@@ -80,6 +80,14 @@ class Unich:
         try:
             async with ClientSession(timeout=ClientTimeout(total=120)) as session:
                 async with session.get(url=url, headers=headers) as response:
+                    if response.status == 401:
+                        return self.log(
+                            f"{Fore.MAGENTA + Style.BRIGHT}[ Account{Style.RESET_ALL}"
+                            f"{Fore.WHITE + Style.BRIGHT} {self.hide_account(token)} {Style.RESET_ALL}"
+                            f"{Fore.RED + Style.BRIGHT}Expired{Style.RESET_ALL}"
+                            f"{Fore.MAGENTA + Style.BRIGHT} ]{Style.RESET_ALL}"
+                        )
+                        
                     response.raise_for_status()
                     result = await response.json()
                     return result['data']
