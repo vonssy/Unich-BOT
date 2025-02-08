@@ -48,14 +48,14 @@ class Unich:
         minutes, seconds = divmod(remainder, 60)
         return f"{int(hours):02}:{int(minutes):02}:{int(seconds):02}"
     
-    def hide_account(self, account):
+    def mask_account(self, account):
         if '@' in account:
             local, domain = account.split('@', 1)
             hide_local = local[:3] + '*' * 3 + local[-3:]
             return f"{hide_local}@{domain}"
         
-        hide_account = account[:3] + '*' * 3 + account[-3:]
-        return hide_account
+        mask_account = account[:3] + '*' * 3 + account[-3:]
+        return mask_account
     
     def generate_random_username(self):
         vowels = "aeiou"
@@ -70,29 +70,43 @@ class Unich:
         
         return '@' + ''.join(username)
     
-    async def user_info(self, token: str):
+    def print_message(self, action, color, message):
+        self.log(
+            f"{Fore.CYAN + Style.BRIGHT}{action}{Style.RESET_ALL}"
+            f"{color + Style.BRIGHT} {message} {Style.RESET_ALL}"
+        )
+    
+    async def user_info(self, token: str, retries=5):
         url = "https://api.unich.com/airdrop/user/v1/info/my-info"
         headers = {
             **self.headers,
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json"
         }
-        try:
-            async with ClientSession(timeout=ClientTimeout(total=120)) as session:
-                async with session.get(url=url, headers=headers) as response:
-                    if response.status == 401:
-                        return self.log(
-                            f"{Fore.MAGENTA + Style.BRIGHT}[ Account{Style.RESET_ALL}"
-                            f"{Fore.WHITE + Style.BRIGHT} {self.hide_account(token)} {Style.RESET_ALL}"
-                            f"{Fore.RED + Style.BRIGHT}Expired{Style.RESET_ALL}"
-                            f"{Fore.MAGENTA + Style.BRIGHT} ]{Style.RESET_ALL}"
-                        )
-                        
-                    response.raise_for_status()
-                    result = await response.json()
-                    return result['data']
-        except (Exception, ClientResponseError) as e:
-            return None
+        for attempt in range(retries):
+            try:
+                async with ClientSession(timeout=ClientTimeout(total=30)) as session:
+                    async with session.get(url=url, headers=headers) as response:
+                        if response.status == 401:
+                            return self.print_message("Account   :", Fore.WHITE, 
+                                f"{self.mask_account(token)}"
+                                f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
+                                f"{Fore.RED + Style.BRIGHT}Access Token Expired{Style.RESET_ALL}"
+                            )
+                            
+                        response.raise_for_status()
+                        result = await response.json()
+                        return result['data']
+            except (Exception, ClientResponseError) as e:
+                if attempt < retries - 1:
+                    await asyncio.sleep(5)
+                    continue
+
+                return self.print_message("Account   :", Fore.WHITE, 
+                    f"{self.mask_account(token)}"
+                    f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
+                    f"{Fore.RED + Style.BRIGHT}Data Is None{Style.RESET_ALL}"
+                )
     
     async def user_confirm(self, token: str):
         url = "https://api.unich.com/airdrop/user/v1/ref/refer-sign-up"
@@ -104,30 +118,89 @@ class Unich:
             "Content-Type": "application/json"
         }
         try:
-            async with ClientSession(timeout=ClientTimeout(total=120)) as session:
+            async with ClientSession(timeout=ClientTimeout(total=30)) as session:
                 async with session.post(url=url, headers=headers, data=data) as response:
                     response.raise_for_status()
                     return await response.json()
         except (Exception, ClientResponseError) as e:
             return None
     
-    async def task_lists(self, token: str):
+    async def mining_recent(self, token: str, retries=5):
+        url = "https://api.unich.com/airdrop/user/v1/mining/recent"
+        headers = {
+            **self.headers,
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json"
+        }
+        for attempt in range(retries):
+            try:
+                async with ClientSession(timeout=ClientTimeout(total=30)) as session:
+                    async with session.get(url=url, headers=headers) as response:
+                        if response.status == 401:
+                            return self.print_message("Mining    :", Fore.RED,  "Access Token Expired")
+                            
+                        response.raise_for_status()
+                        result = await response.json()
+                        return result['data']
+            except (Exception, ClientResponseError) as e:
+                if attempt < retries - 1:
+                    await asyncio.sleep(5)
+                    continue
+
+                return None
+    
+    async def start_mining(self, token: str, retries=5):
+        url = "https://api.unich.com/airdrop/user/v1/mining/start"
+        headers = {
+            **self.headers,
+            "Authorization": f"Bearer {token}",
+            "Content-Length": "0",
+            "Content-Type": "application/json"
+        }
+        for attempt in range(retries):
+            try:
+                async with ClientSession(timeout=ClientTimeout(total=30)) as session:
+                    async with session.post(url=url, headers=headers) as response:
+                        if response.status == 401:
+                            return self.print_message("Mining    :", Fore.RED,  "Not Started"
+                                f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
+                                f"{Fore.RED + Style.BRIGHT}Access Token Expired{Style.RESET_ALL}"
+                            )
+                            
+                        response.raise_for_status()
+                        return await response.json()
+            except (Exception, ClientResponseError) as e:
+                if attempt < retries - 1:
+                    await asyncio.sleep(5)
+                    continue
+
+                return self.print_message("Mining    :", Fore.RED,  "Not Started")
+            
+    async def task_lists(self, token: str, retries=5):
         url = "https://api.unich.com/airdrop/user/v1/social/list-by-user"
         headers = {
             **self.headers,
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json"
         }
-        try:
-            async with ClientSession(timeout=ClientTimeout(total=120)) as session:
-                async with session.get(url=url, headers=headers) as response:
-                    response.raise_for_status()
-                    result = await response.json()
-                    return result['data']['items']
-        except (Exception, ClientResponseError) as e:
-            return None
+        for attempt in range(retries):
+            try:
+                async with ClientSession(timeout=ClientTimeout(total=30)) as session:
+                    async with session.get(url=url, headers=headers) as response:
+                        if response.status == 401:
+                            return self.print_message("Task Lists:", Fore.RED,  "Access Token Expired")
+                            
+                        response.raise_for_status()
+                        result = await response.json()
+                        return result['data']['items']
+            except (Exception, ClientResponseError) as e:
+                if attempt < retries - 1:
+                    await asyncio.sleep(5)
+                    continue
+
+                return None
     
-    async def claim_tasks(self, token: str, quest_id: str):
+    async def claim_tasks(self, token: str, quest_id: str, title: str, retries=5):
         url = f"https://api.unich.com/airdrop/user/v1/social/claim/{quest_id}"
         data = json.dumps({"evidence":self.generate_random_username()})
         headers = {
@@ -136,142 +209,89 @@ class Unich:
             "Content-Length": str(len(data)),
             "Content-Type": "application/json"
         }
-        try:
-            async with ClientSession(timeout=ClientTimeout(total=120)) as session:
-                async with session.post(url=url, headers=headers, data=data) as response:
-                    response.raise_for_status()
-                    return await response.json()
-        except (Exception, ClientResponseError) as e:
-            return None
-    
-    async def mining_recent(self, token: str):
-        url = "https://api.unich.com/airdrop/user/v1/mining/recent"
-        headers = {
-            **self.headers,
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json"
-        }
-        try:
-            async with ClientSession(timeout=ClientTimeout(total=120)) as session:
-                async with session.get(url=url, headers=headers) as response:
-                    response.raise_for_status()
-                    result = await response.json()
-                    return result['data']
-        except (Exception, ClientResponseError) as e:
-            return None
-    
-    async def start_mining(self, token: str):
-        url = "https://api.unich.com/airdrop/user/v1/mining/start"
-        headers = {
-            **self.headers,
-            "Authorization": f"Bearer {token}",
-            "Content-Length": "0",
-            "Content-Type": "application/json"
-        }
-        try:
-            async with ClientSession(timeout=ClientTimeout(total=120)) as session:
-                async with session.post(url=url, headers=headers) as response:
-                    response.raise_for_status()
-                    return await response.json()
-        except (Exception, ClientResponseError) as e:
-            return None
+        for attempt in range(retries):
+            try:
+                async with ClientSession(timeout=ClientTimeout(total=30)) as session:
+                    async with session.post(url=url, headers=headers, data=data) as response:
+                        if response.status == 401:
+                            return self.print_message("     > ", Fore.WHITE,  f"{title}"
+                                f"{Fore.RED + Style.BRIGHT} Isn't Claimed {Style.RESET_ALL}"
+                                f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
+                                f"{Fore.RED + Style.BRIGHT} Access Token Expired {Style.RESET_ALL}"
+                            )
+                            
+                        response.raise_for_status()
+                        return await response.json()
+            except (Exception, ClientResponseError) as e:
+                if attempt < retries - 1:
+                    await asyncio.sleep(5)
+                    continue
+
+                return self.print_message("     > ", Fore.WHITE,  f"{title}"
+                    f"{Fore.RED + Style.BRIGHT} Isn't Claimed {Style.RESET_ALL}"
+                )
     
     async def process_accounts(self, token: str):
+
         user = await self.user_info(token)
         if not user:
-            self.log(
-                f"{Fore.MAGENTA + Style.BRIGHT}[ Account{Style.RESET_ALL}"
-                f"{Fore.WHITE + Style.BRIGHT} {self.hide_account(token)} {Style.RESET_ALL}"
-                f"{Fore.RED + Style.BRIGHT}Data Is None{Style.RESET_ALL}"
-                f"{Fore.MAGENTA + Style.BRIGHT} ]{Style.RESET_ALL}"
-            )
             return
-
-        email = user['email']
-        self.log(
-            f"{Fore.MAGENTA + Style.BRIGHT}[ Account{Style.RESET_ALL}"
-            f"{Fore.WHITE + Style.BRIGHT} {self.hide_account(email)} {Style.RESET_ALL}"
-            f"{Fore.MAGENTA + Style.BRIGHT}] [ Balance{Style.RESET_ALL}"
-            f"{Fore.WHITE + Style.BRIGHT} {user['mUn']} FD Points {Style.RESET_ALL}"
-            f"{Fore.MAGENTA + Style.BRIGHT}]{Style.RESET_ALL}"
-        )
-        await asyncio.sleep(1)
-
+        
         await self.user_confirm(token)
+        
+        name = user['email']
+        balance = user['mUn']
 
-        tasks = await self.task_lists(token)
-        if tasks:
-            completed = False
-            for task in tasks:
-                task_id = task['id']
-                is_claimed = task['claimed']
-
-                if task and not is_claimed:
-                    claim = await self.claim_tasks(token, task_id)
-                    if claim and claim.get("code") == "OK":
-                        self.log(
-                            f"{Fore.MAGENTA + Style.BRIGHT}[ Task{Style.RESET_ALL}"
-                            f"{Fore.WHITE + Style.BRIGHT} {task['title']} {Style.RESET_ALL}"
-                            f"{Fore.GREEN + Style.BRIGHT}Is Claimed{Style.RESET_ALL}"
-                            f"{Fore.MAGENTA + Style.BRIGHT} ] [ Reward{Style.RESET_ALL}"
-                            f"{Fore.WHITE + Style.BRIGHT} {task['pointReward']} FD Points {Style.RESET_ALL}"
-                            f"{Fore.MAGENTA + Style.BRIGHT}]{Style.RESET_ALL}"
-                        )
-                    else:
-                        self.log(
-                            f"{Fore.MAGENTA + Style.BRIGHT}[ Task{Style.RESET_ALL}"
-                            f"{Fore.WHITE + Style.BRIGHT} {task['title']} {Style.RESET_ALL}"
-                            f"{Fore.RED + Style.BRIGHT}Isn't Claimed{Style.RESET_ALL}"
-                            f"{Fore.MAGENTA + Style.BRIGHT} ]{Style.RESET_ALL}"
-                        )
-
-                else:
-                    completed = True
-
-            if completed:
-                self.log(
-                    f"{Fore.MAGENTA + Style.BRIGHT}[ Task{Style.RESET_ALL}"
-                    f"{Fore.GREEN + Style.BRIGHT} Is Completed {Style.RESET_ALL}"
-                    f"{Fore.MAGENTA + Style.BRIGHT}]{Style.RESET_ALL}"
-                )
-        else:
-            self.log(
-                f"{Fore.MAGENTA + Style.BRIGHT}[ Task{Style.RESET_ALL}"
-                f"{Fore.RED + Style.BRIGHT} Data Is None {Style.RESET_ALL}"
-                f"{Fore.MAGENTA + Style.BRIGHT}]{Style.RESET_ALL}"
-            )
+        self.print_message("Account   :", Fore.WHITE, f"{self.mask_account(name)}")
+        self.print_message("Balance   :", Fore.WHITE, f"{balance} FD Points")
 
         mining = await self.mining_recent(token)
         if mining:
+            reward = mining['miningDailyReward']
             is_mining = mining['isMining']
+
             if not is_mining:
                 start = await self.start_mining(token)
+
                 if start and start.get("code") == "OK":
-                    self.log(
-                        f"{Fore.MAGENTA + Style.BRIGHT}[ Mining{Style.RESET_ALL}"
-                        f"{Fore.GREEN + Style.BRIGHT} Is Started {Style.RESET_ALL}"
-                        f"{Fore.MAGENTA + Style.BRIGHT}] [ Reward{Style.RESET_ALL}"
-                        f"{Fore.WHITE + Style.BRIGHT} {task['pointReward']} FD Points {Style.RESET_ALL}"
-                        f"{Fore.MAGENTA + Style.BRIGHT}]{Style.RESET_ALL}"
+                    self.print_message("Mining    :", Fore.GREEN, "Is Started"
+                        f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
+                        f"{Fore.CYAN + Style.BRIGHT}Reward{Style.RESET_ALL}"
+                        f"{Fore.WHITE + Style.BRIGHT} {reward} FD Points {Style.RESET_ALL}"
                     )
-                else:
-                    self.log(
-                        f"{Fore.MAGENTA + Style.BRIGHT}[ Mining{Style.RESET_ALL}"
-                        f"{Fore.RED + Style.BRIGHT} Isn't Started {Style.RESET_ALL}"
-                        f"{Fore.MAGENTA + Style.BRIGHT}]{Style.RESET_ALL}"
-                    )
+
             else:
-                self.log(
-                    f"{Fore.MAGENTA + Style.BRIGHT}[ Mining{Style.RESET_ALL}"
-                    f"{Fore.YELLOW + Style.BRIGHT} Is Already Started {Style.RESET_ALL}"
-                    f"{Fore.MAGENTA + Style.BRIGHT}]{Style.RESET_ALL}"
-                )
+                self.print_message("Mining    :", Fore.YELLOW, "Already Started")
         else:
-            self.log(
-                f"{Fore.MAGENTA + Style.BRIGHT}[ Mining{Style.RESET_ALL}"
-                f"{Fore.RED + Style.BRIGHT} Data Is None {Style.RESET_ALL}"
-                f"{Fore.MAGENTA + Style.BRIGHT}]{Style.RESET_ALL}"
+            self.print_message("Mining    :", Fore.RED, "Data Is None")
+
+        tasks = await self.task_lists(token)
+        if tasks:
+            self.print_message("Task Lists:", Fore.GREEN,  "Available"
+                f"{Fore.WHITE + Style.BRIGHT} {len(tasks)} Tasks {Style.RESET_ALL}"
             )
+
+            for task in tasks:
+                if task:
+                    task_id = task['id']
+                    title = task['title']
+                    reward = task['pointReward']
+                    is_claimed = task['claimed']
+
+                    if is_claimed:
+                        self.print_message("     > ", Fore.WHITE,  f"{title}"
+                            f"{Fore.YELLOW + Style.BRIGHT} Already Claimed {Style.RESET_ALL}"
+                        )
+                        continue
+
+                    claim = await self.claim_tasks(token, task_id, title)
+                    if claim and claim.get("code") == "OK":
+                        self.print_message("     > ", Fore.WHITE,  f"{title}"
+                            f"{Fore.GREEN + Style.BRIGHT} Is Claimed {Style.RESET_ALL}"
+                            f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
+                            f"{Fore.CYAN + Style.BRIGHT} Reward {Style.RESET_ALL}"
+                            f"{Fore.WHITE + Style.BRIGHT}{reward} FD Points{Style.RESET_ALL}"
+                        )
 
     async def main(self):
         try:
@@ -285,16 +305,15 @@ class Unich:
                     f"{Fore.GREEN + Style.BRIGHT}Account's Total: {Style.RESET_ALL}"
                     f"{Fore.WHITE + Style.BRIGHT}{len(tokens)}{Style.RESET_ALL}"
                 )
-                self.log(f"{Fore.CYAN + Style.BRIGHT}-{Style.RESET_ALL}"*75)
+                self.log(f"{Fore.CYAN + Style.BRIGHT}={Style.RESET_ALL}"*60)
                 
                 for token in tokens:
-                    token = token.strip()
                     if token:
                         await self.process_accounts(token)
-                        self.log(f"{Fore.CYAN + Style.BRIGHT}-{Style.RESET_ALL}"*75)
+                        self.log(f"{Fore.CYAN + Style.BRIGHT}={Style.RESET_ALL}"*60)
                         await asyncio.sleep(3)
 
-                seconds = 86400
+                seconds = 12 * 60 * 60
                 while seconds > 0:
                     formatted_time = self.format_seconds(seconds)
                     print(
