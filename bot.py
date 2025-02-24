@@ -60,14 +60,10 @@ class Unich:
     def generate_random_username(self):
         vowels = "aeiou"
         consonants = "bcdfghjklmnpqrstvwxyz"
-        
         username = []
         for _ in range(8 // 2):
-            consonant = random.choice(consonants)
-            vowel = random.choice(vowels)
-            username.append(consonant)
-            username.append(vowel)
-        
+            username.append(random.choice(consonants))
+            username.append(random.choice(vowels))
         return '@' + ''.join(username)
     
     def print_message(self, action, color, message):
@@ -76,7 +72,19 @@ class Unich:
             f"{color + Style.BRIGHT} {message} {Style.RESET_ALL}"
         )
     
-    async def user_info(self, token: str, retries=5):
+    async def get_proxy_ip(self, proxy: str):
+        """Fetches the public IP (as seen by ip-api.com) when using the given proxy."""
+        url = "http://ip-api.com/json"
+        try:
+            async with ClientSession(timeout=ClientTimeout(total=30)) as session:
+                async with session.get(url=url, proxy=proxy) as response:
+                    response.raise_for_status()
+                    data = await response.json()
+                    return data.get("query", "Unknown")
+        except Exception:
+            return "Unknown"
+    
+    async def user_info(self, token: str, proxy: str, retries=5):
         url = "https://api.unich.com/airdrop/user/v1/info/my-info"
         headers = {
             **self.headers,
@@ -86,29 +94,27 @@ class Unich:
         for attempt in range(retries):
             try:
                 async with ClientSession(timeout=ClientTimeout(total=30)) as session:
-                    async with session.get(url=url, headers=headers) as response:
+                    async with session.get(url=url, headers=headers, proxy=proxy) as response:
                         if response.status == 401:
                             return self.print_message("Account   :", Fore.WHITE, 
                                 f"{self.mask_account(token)}"
                                 f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
                                 f"{Fore.RED + Style.BRIGHT}Access Token Expired{Style.RESET_ALL}"
                             )
-                            
                         response.raise_for_status()
                         result = await response.json()
                         return result['data']
-            except (Exception, ClientResponseError) as e:
+            except (Exception, ClientResponseError):
                 if attempt < retries - 1:
                     await asyncio.sleep(5)
                     continue
-
                 return self.print_message("Account   :", Fore.WHITE, 
                     f"{self.mask_account(token)}"
                     f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
                     f"{Fore.RED + Style.BRIGHT}Data Is None{Style.RESET_ALL}"
                 )
     
-    async def user_confirm(self, token: str):
+    async def user_confirm(self, token: str, proxy: str):
         url = "https://api.unich.com/airdrop/user/v1/ref/refer-sign-up"
         data = json.dumps({"code":"2CQMZB"})
         headers = {
@@ -119,13 +125,13 @@ class Unich:
         }
         try:
             async with ClientSession(timeout=ClientTimeout(total=30)) as session:
-                async with session.post(url=url, headers=headers, data=data) as response:
+                async with session.post(url=url, headers=headers, data=data, proxy=proxy) as response:
                     response.raise_for_status()
                     return await response.json()
-        except (Exception, ClientResponseError) as e:
+        except (Exception, ClientResponseError):
             return None
     
-    async def mining_recent(self, token: str, retries=5):
+    async def mining_recent(self, token: str, proxy: str, retries=5):
         url = "https://api.unich.com/airdrop/user/v1/mining/recent"
         headers = {
             **self.headers,
@@ -135,21 +141,19 @@ class Unich:
         for attempt in range(retries):
             try:
                 async with ClientSession(timeout=ClientTimeout(total=30)) as session:
-                    async with session.get(url=url, headers=headers) as response:
+                    async with session.get(url=url, headers=headers, proxy=proxy) as response:
                         if response.status == 401:
-                            return self.print_message("Mining    :", Fore.RED,  "Access Token Expired")
-                            
+                            return self.print_message("Mining    :", Fore.RED, "Access Token Expired")
                         response.raise_for_status()
                         result = await response.json()
                         return result['data']
-            except (Exception, ClientResponseError) as e:
+            except (Exception, ClientResponseError):
                 if attempt < retries - 1:
                     await asyncio.sleep(5)
                     continue
-
                 return None
     
-    async def start_mining(self, token: str, retries=5):
+    async def start_mining(self, token: str, proxy: str, retries=5):
         url = "https://api.unich.com/airdrop/user/v1/mining/start"
         headers = {
             **self.headers,
@@ -160,23 +164,21 @@ class Unich:
         for attempt in range(retries):
             try:
                 async with ClientSession(timeout=ClientTimeout(total=30)) as session:
-                    async with session.post(url=url, headers=headers) as response:
+                    async with session.post(url=url, headers=headers, proxy=proxy) as response:
                         if response.status == 401:
-                            return self.print_message("Mining    :", Fore.RED,  "Not Started"
+                            return self.print_message("Mining    :", Fore.RED, "Not Started"
                                 f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
                                 f"{Fore.RED + Style.BRIGHT}Access Token Expired{Style.RESET_ALL}"
                             )
-                            
                         response.raise_for_status()
                         return await response.json()
-            except (Exception, ClientResponseError) as e:
+            except (Exception, ClientResponseError):
                 if attempt < retries - 1:
                     await asyncio.sleep(5)
                     continue
-
-                return self.print_message("Mining    :", Fore.RED,  "Not Started")
+                return self.print_message("Mining    :", Fore.RED, "Not Started")
             
-    async def task_lists(self, token: str, retries=5):
+    async def task_lists(self, token: str, proxy: str, retries=5):
         url = "https://api.unich.com/airdrop/user/v1/social/list-by-user"
         headers = {
             **self.headers,
@@ -186,23 +188,21 @@ class Unich:
         for attempt in range(retries):
             try:
                 async with ClientSession(timeout=ClientTimeout(total=30)) as session:
-                    async with session.get(url=url, headers=headers) as response:
+                    async with session.get(url=url, headers=headers, proxy=proxy) as response:
                         if response.status == 401:
-                            return self.print_message("Task Lists:", Fore.RED,  "Access Token Expired")
-                            
+                            return self.print_message("Task Lists:", Fore.RED, "Access Token Expired")
                         response.raise_for_status()
                         result = await response.json()
                         return result['data']['items']
-            except (Exception, ClientResponseError) as e:
+            except (Exception, ClientResponseError):
                 if attempt < retries - 1:
                     await asyncio.sleep(5)
                     continue
-
                 return None
     
-    async def claim_tasks(self, token: str, quest_id: str, title: str, retries=5):
+    async def claim_tasks(self, token: str, quest_id: str, title: str, proxy: str, retries=5):
         url = f"https://api.unich.com/airdrop/user/v1/social/claim/{quest_id}"
-        data = json.dumps({"evidence":self.generate_random_username()})
+        data = json.dumps({"evidence": self.generate_random_username()})
         headers = {
             **self.headers,
             "Authorization": f"Bearer {token}",
@@ -212,32 +212,36 @@ class Unich:
         for attempt in range(retries):
             try:
                 async with ClientSession(timeout=ClientTimeout(total=30)) as session:
-                    async with session.post(url=url, headers=headers, data=data) as response:
+                    async with session.post(url=url, headers=headers, data=data, proxy=proxy) as response:
                         if response.status == 401:
-                            return self.print_message("     > ", Fore.WHITE,  f"{title}"
+                            return self.print_message("     > ", Fore.WHITE, f"{title}"
                                 f"{Fore.RED + Style.BRIGHT} Isn't Claimed {Style.RESET_ALL}"
                                 f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
                                 f"{Fore.RED + Style.BRIGHT} Access Token Expired {Style.RESET_ALL}"
                             )
-                            
                         response.raise_for_status()
                         return await response.json()
-            except (Exception, ClientResponseError) as e:
+            except (Exception, ClientResponseError):
                 if attempt < retries - 1:
                     await asyncio.sleep(5)
                     continue
-
-                return self.print_message("     > ", Fore.WHITE,  f"{title}"
+                return self.print_message("     > ", Fore.WHITE, f"{title}"
                     f"{Fore.RED + Style.BRIGHT} Isn't Claimed {Style.RESET_ALL}"
                 )
     
-    async def process_accounts(self, token: str):
-
-        user = await self.user_info(token)
+    async def process_accounts(self, token: str, proxy: str):
+        user = await self.user_info(token, proxy)
         if not user:
             return
-        
-        await self.user_confirm(token)
+
+        # Fetch and display the proxy IP
+        if proxy:
+            proxy_ip = await self.get_proxy_ip(proxy)
+        else:
+            proxy_ip = "No Proxy"
+        self.print_message("Ip used   :", Fore.WHITE, f"{proxy_ip}")
+
+        await self.user_confirm(token, proxy)
         
         name = user['email']
         balance = user['mUn']
@@ -245,32 +249,27 @@ class Unich:
         self.print_message("Account   :", Fore.WHITE, f"{self.mask_account(name)}")
         self.print_message("Balance   :", Fore.WHITE, f"{balance} FD Points")
 
-        mining = await self.mining_recent(token)
+        mining = await self.mining_recent(token, proxy)
         if mining:
             reward = mining['miningDailyReward']
             is_mining = mining['isMining']
 
             if not is_mining:
-                start = await self.start_mining(token)
-
+                start = await self.start_mining(token, proxy)
                 if start and start.get("code") == "OK":
                     self.print_message("Mining    :", Fore.GREEN, "Is Started"
                         f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
                         f"{Fore.CYAN + Style.BRIGHT}Reward{Style.RESET_ALL}"
                         f"{Fore.WHITE + Style.BRIGHT} {reward} FD Points {Style.RESET_ALL}"
                     )
-
             else:
                 self.print_message("Mining    :", Fore.YELLOW, "Already Started")
         else:
             self.print_message("Mining    :", Fore.RED, "Data Is None")
 
-        tasks = await self.task_lists(token)
+        tasks = await self.task_lists(token, proxy)
         if tasks:
-            self.print_message("Task Lists:", Fore.GREEN,  "Available"
-                f"{Fore.WHITE + Style.BRIGHT} {len(tasks)} Tasks {Style.RESET_ALL}"
-            )
-
+            self.print_message("Task Lists:", Fore.GREEN, f"Available {len(tasks)} Tasks")
             for task in tasks:
                 if task:
                     task_id = task['id']
@@ -279,14 +278,14 @@ class Unich:
                     is_claimed = task['claimed']
 
                     if is_claimed:
-                        self.print_message("     > ", Fore.WHITE,  f"{title}"
+                        self.print_message("     > ", Fore.WHITE, f"{title}"
                             f"{Fore.YELLOW + Style.BRIGHT} Already Claimed {Style.RESET_ALL}"
                         )
                         continue
 
-                    claim = await self.claim_tasks(token, task_id, title)
+                    claim = await self.claim_tasks(token, task_id, title, proxy)
                     if claim and claim.get("code") == "OK":
-                        self.print_message("     > ", Fore.WHITE,  f"{title}"
+                        self.print_message("     > ", Fore.WHITE, f"{title}"
                             f"{Fore.GREEN + Style.BRIGHT} Is Claimed {Style.RESET_ALL}"
                             f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
                             f"{Fore.CYAN + Style.BRIGHT} Reward {Style.RESET_ALL}"
@@ -298,6 +297,9 @@ class Unich:
             with open('tokens.txt', 'r') as file:
                 tokens = [line.strip() for line in file if line.strip()]
             
+            with open('proxy.txt', 'r') as file:
+                proxies = [line.strip() for line in file if line.strip()]
+
             while True:
                 self.clear_terminal()
                 self.welcome()
@@ -305,12 +307,14 @@ class Unich:
                     f"{Fore.GREEN + Style.BRIGHT}Account's Total: {Style.RESET_ALL}"
                     f"{Fore.WHITE + Style.BRIGHT}{len(tokens)}{Style.RESET_ALL}"
                 )
-                self.log(f"{Fore.CYAN + Style.BRIGHT}={Style.RESET_ALL}"*60)
+                self.log(f"{Fore.CYAN + Style.BRIGHT}=" * 60)
                 
-                for token in tokens:
+                for i, token in enumerate(tokens):
                     if token:
-                        await self.process_accounts(token)
-                        self.log(f"{Fore.CYAN + Style.BRIGHT}={Style.RESET_ALL}"*60)
+                        # Use corresponding proxy for each account (cycle if needed)
+                        proxy = proxies[i % len(proxies)] if proxies else None
+                        await self.process_accounts(token, proxy)
+                        self.log(f"{Fore.CYAN + Style.BRIGHT}=" * 60)
                         await asyncio.sleep(3)
 
                 seconds = 12 * 60 * 60
@@ -327,8 +331,11 @@ class Unich:
                     await asyncio.sleep(1)
                     seconds -= 1
 
-        except FileNotFoundError:
-            self.log(f"{Fore.RED}File 'tokens.txt' Not Found.{Style.RESET_ALL}")
+        except FileNotFoundError as e:
+            if 'tokens.txt' in str(e):
+                self.log(f"{Fore.RED}File 'tokens.txt' Not Found.{Style.RESET_ALL}")
+            elif 'proxy.txt' in str(e):
+                self.log(f"{Fore.RED}File 'proxy.txt' Not Found.{Style.RESET_ALL}")
             return
         except Exception as e:
             self.log(f"{Fore.RED+Style.BRIGHT}Error: {e}{Style.RESET_ALL}")
