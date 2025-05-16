@@ -273,8 +273,6 @@ class Unich:
             try:
                 async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
                     async with session.post(url=url, headers=headers) as response:
-                        self.log(response.status)
-                        self.log(response.statu)
                         response.raise_for_status()
                         return await response.json()
             except (Exception, ClientResponseError) as e:
