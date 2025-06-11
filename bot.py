@@ -1,9 +1,4 @@
-from aiohttp import (
-    ClientResponseError,
-    ClientSession,
-    ClientTimeout
-)
-from aiohttp_socks import ProxyConnector
+from curl_cffi import requests
 from fake_useragent import FakeUserAgent
 from datetime import datetime
 from colorama import *
@@ -17,7 +12,7 @@ class Unich:
             "Accept": "application/json, text/plain, */*",
             "Accept-Language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
             "Origin": "https://unich.com",
-            "Referer": "https://unich.com",
+            "Referer": "https://unich.com/",
             "Sec-Fetch-Dest": "empty",
             "Sec-Fetch-Mode": "cors",
             "Sec-Fetch-Site": "same-site",
@@ -58,19 +53,18 @@ class Unich:
         filename = "proxy.txt"
         try:
             if use_proxy_choice == 1:
-                async with ClientSession(timeout=ClientTimeout(total=30)) as session:
-                    async with session.get("https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/all.txt") as response:
-                        response.raise_for_status()
-                        content = await response.text()
-                        with open(filename, 'w') as f:
-                            f.write(content)
-                        self.proxies = content.splitlines()
+                response = await asyncio.to_thread(requests.get, "https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies&proxy_format=protocolipport&format=text")
+                response.raise_for_status()
+                content = response.text
+                with open(filename, 'w') as f:
+                    f.write(content)
+                self.proxies = [line.strip() for line in content.splitlines() if line.strip()]
             else:
                 if not os.path.exists(filename):
                     self.log(f"{Fore.RED + Style.BRIGHT}File {filename} Not Found.{Style.RESET_ALL}")
                     return
                 with open(filename, 'r') as f:
-                    self.proxies = f.read().splitlines()
+                    self.proxies = [line.strip() for line in f.read().splitlines() if line.strip()]
             
             if not self.proxies:
                 self.log(f"{Fore.RED + Style.BRIGHT}No Proxies Found.{Style.RESET_ALL}")
@@ -119,16 +113,13 @@ class Unich:
         except Exception as e:
             return None
         
-    def check_token_status(self, token: str):
+    def check_token_status(self, signed_time: int):
         try:
-            signed_at = self.decode_token(token)
-            tenth_days = 10 * 24 * 60 * 60 * 1000
+            exp_time = signed_time + 864000000
 
-            token_exp_time = signed_at + tenth_days
-
-            now = int(time.time()) * 1000
-
-            if now > token_exp_time:
+            current_time = int(time.time()) * 1000
+            
+            if current_time > exp_time:
                 return False
 
             return True
@@ -140,9 +131,6 @@ class Unich:
             local, domain = account.split('@', 1)
             hide_local = local[:3] + '*' * 3 + local[-3:]
             return f"{hide_local}@{domain}"
-        
-        mask_account = account[:6] + '*' * 6 + account[-6:]
-        return mask_account
     
     def generate_random_username(self):
         vowels = "aeiou"
@@ -160,18 +148,18 @@ class Unich:
     def print_question(self):
         while True:
             try:
-                print(f"{Fore.WHITE + Style.BRIGHT}1. Run With Monosans Proxy{Style.RESET_ALL}")
+                print(f"{Fore.WHITE + Style.BRIGHT}1. Run With Free Proxyscrape Proxy{Style.RESET_ALL}")
                 print(f"{Fore.WHITE + Style.BRIGHT}2. Run With Private Proxy{Style.RESET_ALL}")
                 print(f"{Fore.WHITE + Style.BRIGHT}3. Run Without Proxy{Style.RESET_ALL}")
                 choose = int(input(f"{Fore.BLUE + Style.BRIGHT}Choose [1/2/3] -> {Style.RESET_ALL}").strip())
 
                 if choose in [1, 2, 3]:
                     proxy_type = (
-                        "Run With Monosans Proxy" if choose == 1 else 
-                        "Run With Private Proxy" if choose == 2 else 
-                        "Run Without Proxy"
+                        "With Free Proxyscrape" if choose == 1 else 
+                        "With Private" if choose == 2 else 
+                        "Without"
                     )
-                    print(f"{Fore.GREEN + Style.BRIGHT}{proxy_type} Selected.{Style.RESET_ALL}")
+                    print(f"{Fore.GREEN + Style.BRIGHT}Run {proxy_type} Proxy Selected.{Style.RESET_ALL}")
                     break
                 else:
                     print(f"{Fore.RED + Style.BRIGHT}Please enter either 1, 2 or 3.{Style.RESET_ALL}")
@@ -192,14 +180,19 @@ class Unich:
         return choose, rotate
     
     async def check_connection(self, proxy=None):
-        connector = ProxyConnector.from_url(proxy) if proxy else None
         try:
-            async with ClientSession(connector=connector, timeout=ClientTimeout(total=30)) as session:
-                async with session.get(url="https://unich.com", headers={}) as response:
-                    response.raise_for_status()
-                    return True
-        except (Exception, ClientResponseError) as e:
-            return None
+            response = await asyncio.to_thread(requests.get, url="https://unich.com", headers={}, proxy=proxy, timeout=60, impersonate="chrome110", verify=False)    
+            response.raise_for_status()
+            return True
+        except Exception as e:
+            self.log(
+                f"{Fore.CYAN+Style.BRIGHT}Status    :{Style.RESET_ALL}"
+                f"{Fore.RED+Style.BRIGHT} Connection Not 200 OK {Style.RESET_ALL}"
+                f"{Fore.MAGENTA+Style.BRIGHT}-{Style.RESET_ALL}"
+                f"{Fore.YELLOW+Style.BRIGHT} {str(e)} {Style.RESET_ALL}"
+            )
+
+        return None
         
     async def user_info(self, token: str, proxy=None, retries=5):
         url = f"{self.BASE_API}/info/my-info"
@@ -208,19 +201,24 @@ class Unich:
             "Authorization": f"Bearer {token}"
         }
         for attempt in range(retries):
-            connector = ProxyConnector.from_url(proxy) if proxy else None
             try:
-                async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
-                    async with session.get(url=url, headers=headers) as response:
-                        response.raise_for_status()
-                        return await response.json()
-            except (Exception, ClientResponseError) as e:
+                response = await asyncio.to_thread(requests.get, url=url, headers=headers, proxy=proxy, timeout=60, impersonate="chrome110", verify=False)    
+                response.raise_for_status()
+                return response.json()
+            except Exception as e:
                 if attempt < retries - 1:
                     await asyncio.sleep(5)
                     continue
-                return None
+                self.log(
+                    f"{Fore.CYAN+Style.BRIGHT}Status    :{Style.RESET_ALL}"
+                    f"{Fore.RED+Style.BRIGHT} GET User Data Failed {Style.RESET_ALL}"
+                    f"{Fore.MAGENTA+Style.BRIGHT}-{Style.RESET_ALL}"
+                    f"{Fore.YELLOW+Style.BRIGHT} {str(e)} {Style.RESET_ALL}"
+                )
+            
+        return None
         
-    async def ref_confirm(self, token: str, proxy=None, retries=5):
+    async def apply_ref(self, token: str, proxy=None, retries=5):
         url = f"{self.BASE_API}/ref/refer-sign-up"
         data = json.dumps({"code":self.ref_code})
         headers = {
@@ -230,17 +228,24 @@ class Unich:
             "Content-Type": "application/json"
         }
         for attempt in range(retries):
-            connector = ProxyConnector.from_url(proxy) if proxy else None
             try:
-                async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
-                    async with session.post(url=url, headers=headers, data=data) as response:
-                        response.raise_for_status()
-                        return await response.json()
-            except (Exception, ClientResponseError) as e:
+                response = await asyncio.to_thread(requests.post, url=url, headers=headers, data=data, proxy=proxy, timeout=60, impersonate="chrome110", verify=False)
+                if response.status_code == 400:
+                    return None
+                response.raise_for_status()
+                return response.json()
+            except Exception as e:
                 if attempt < retries - 1:
                     await asyncio.sleep(5)
                     continue
-                return None
+                self.log(
+                    f"{Fore.CYAN+Style.BRIGHT}Error     :{Style.RESET_ALL}"
+                    f"{Fore.RED+Style.BRIGHT} Apply Ref Failed {Style.RESET_ALL}"
+                    f"{Fore.MAGENTA+Style.BRIGHT}-{Style.RESET_ALL}"
+                    f"{Fore.YELLOW+Style.BRIGHT} {str(e)} {Style.RESET_ALL}"
+                )
+            
+        return None
             
     async def recent_mining(self, token: str, proxy=None, retries=5):
         url = f"{self.BASE_API}/mining/recent"
@@ -249,17 +254,22 @@ class Unich:
             "Authorization": f"Bearer {token}"
         }
         for attempt in range(retries):
-            connector = ProxyConnector.from_url(proxy) if proxy else None
             try:
-                async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
-                    async with session.get(url=url, headers=headers) as response:
-                        response.raise_for_status()
-                        return await response.json()
-            except (Exception, ClientResponseError) as e:
+                response = await asyncio.to_thread(requests.get, url=url, headers=headers, proxy=proxy, timeout=60, impersonate="chrome110", verify=False)    
+                response.raise_for_status()
+                return response.json()
+            except Exception as e:
                 if attempt < retries - 1:
                     await asyncio.sleep(5)
                     continue
-                return None
+                self.log(
+                    f"{Fore.CYAN+Style.BRIGHT}Mining    :{Style.RESET_ALL}"
+                    f"{Fore.RED+Style.BRIGHT} GET Recent Status Failed {Style.RESET_ALL}"
+                    f"{Fore.MAGENTA+Style.BRIGHT}-{Style.RESET_ALL}"
+                    f"{Fore.YELLOW+Style.BRIGHT} {str(e)} {Style.RESET_ALL}"
+                )
+            
+        return None
         
     async def start_mining(self, token: str, proxy=None, retries=5):
         url = f"{self.BASE_API}/mining/start"
@@ -269,17 +279,22 @@ class Unich:
             "Content-Length": "0",
         }
         for attempt in range(retries):
-            connector = ProxyConnector.from_url(proxy) if proxy else None
             try:
-                async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
-                    async with session.post(url=url, headers=headers) as response:
-                        response.raise_for_status()
-                        return await response.json()
-            except (Exception, ClientResponseError) as e:
+                response = await asyncio.to_thread(requests.post, url=url, headers=headers, proxy=proxy, timeout=60, impersonate="chrome110", verify=False)    
+                response.raise_for_status()
+                return response.json()
+            except Exception as e:
                 if attempt < retries - 1:
                     await asyncio.sleep(5)
                     continue
-                return None
+                self.log(
+                    f"{Fore.CYAN+Style.BRIGHT}Mining    :{Style.RESET_ALL}"
+                    f"{Fore.RED+Style.BRIGHT} Not Started {Style.RESET_ALL}"
+                    f"{Fore.MAGENTA+Style.BRIGHT}-{Style.RESET_ALL}"
+                    f"{Fore.YELLOW+Style.BRIGHT} {str(e)} {Style.RESET_ALL}"
+                )
+            
+        return None
             
     async def task_lists(self, token: str, proxy=None, retries=5):
         url = f"{self.BASE_API}/social/list-by-user"
@@ -288,19 +303,24 @@ class Unich:
             "Authorization": f"Bearer {token}"
         }
         for attempt in range(retries):
-            connector = ProxyConnector.from_url(proxy) if proxy else None
             try:
-                async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
-                    async with session.get(url=url, headers=headers) as response:
-                        response.raise_for_status()
-                        return await response.json()
-            except (Exception, ClientResponseError) as e:
+                response = await asyncio.to_thread(requests.get, url=url, headers=headers, proxy=proxy, timeout=60, impersonate="chrome110", verify=False)    
+                response.raise_for_status()
+                return response.json()
+            except Exception as e:
                 if attempt < retries - 1:
                     await asyncio.sleep(5)
                     continue
-                return None
+                self.log(
+                    f"{Fore.CYAN+Style.BRIGHT}Task Lists:{Style.RESET_ALL}"
+                    f"{Fore.RED+Style.BRIGHT} GET Lists Failed {Style.RESET_ALL}"
+                    f"{Fore.MAGENTA+Style.BRIGHT}-{Style.RESET_ALL}"
+                    f"{Fore.YELLOW+Style.BRIGHT} {str(e)} {Style.RESET_ALL}"
+                )
+            
+        return None
         
-    async def claim_tasks(self, token: str, task_id: str, proxy=None, retries=5):
+    async def claim_tasks(self, token: str, task_id: str, title: str, proxy=None, retries=5):
         url = f"{self.BASE_API}/social/claim/{task_id}"
         data = json.dumps({"evidence":self.generate_random_username()})
         headers = {
@@ -310,85 +330,42 @@ class Unich:
             "Content-Type": "application/json"
         }
         for attempt in range(retries):
-            connector = ProxyConnector.from_url(proxy) if proxy else None
             try:
-                async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
-                    async with session.post(url=url, headers=headers, data=data) as response:
-                        response.raise_for_status()
-                        return await response.json()
-            except (Exception, ClientResponseError) as e:
+                response = await asyncio.to_thread(requests.post, url=url, headers=headers, data=data, proxy=proxy, timeout=60, impersonate="chrome110", verify=False)    
+                response.raise_for_status()
+                return response.json()
+            except Exception as e:
                 if attempt < retries - 1:
                     await asyncio.sleep(5)
                     continue
-                return None
-    
-    async def process_check_connection(self, token: str, use_proxy: bool, rotate_proxy: bool):
-        is_token_active = self.check_token_status(token)
-        if not is_token_active:
-            self.log(
-                f"{Fore.CYAN+Style.BRIGHT}Token     :{Style.RESET_ALL}"
-                f"{Fore.BLUE+Style.BRIGHT} {self.mask_account(token)} {Style.RESET_ALL}"
-                f"{Fore.RED+Style.BRIGHT}Expired{Style.RESET_ALL}"
-            )
-            return False
-        
-        message = "Checking Connection, Wait..."
-        if use_proxy:
-            message = "Checking Proxy Connection, Wait..."
-
-        print(
-            f"{Fore.CYAN + Style.BRIGHT}[ {datetime.now().astimezone(wib).strftime('%x %X %Z')} ]{Style.RESET_ALL}"
-            f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
-            f"{Fore.YELLOW + Style.BRIGHT}{message}{Style.RESET_ALL}",
-            end="\r",
-            flush=True
-        )
-
-        proxy = self.get_next_proxy_for_account(token) if use_proxy else None
-
-        if rotate_proxy:
-            is_valid = None
-            while is_valid is None:
-                is_valid = await self.check_connection(proxy)
-                if not is_valid:
-                    self.log(
-                        f"{Fore.CYAN+Style.BRIGHT}Proxy     :{Style.RESET_ALL}"
-                        f"{Fore.WHITE+Style.BRIGHT} {proxy} {Style.RESET_ALL}"
-                        f"{Fore.MAGENTA+Style.BRIGHT}-{Style.RESET_ALL}"
-                        f"{Fore.RED+Style.BRIGHT} Not 200 OK, {Style.RESET_ALL}"
-                        f"{Fore.YELLOW+Style.BRIGHT}Rotating Proxy...{Style.RESET_ALL}"
-                    )
-                    proxy = self.rotate_proxy_for_account(token) if use_proxy else None
-                    await asyncio.sleep(5)
-                    continue
-
                 self.log(
-                    f"{Fore.CYAN+Style.BRIGHT}Proxy     :{Style.RESET_ALL}"
-                    f"{Fore.WHITE+Style.BRIGHT} {proxy} {Style.RESET_ALL}"
+                    f"{Fore.MAGENTA+Style.BRIGHT}   >{Style.RESET_ALL}"
+                    f"{Fore.WHITE+Style.BRIGHT} {title} {Style.RESET_ALL}"
+                    f"{Fore.RED+Style.BRIGHT}Not Claimed{Style.RESET_ALL}"
                     f"{Fore.MAGENTA+Style.BRIGHT}-{Style.RESET_ALL}"
-                    f"{Fore.GREEN+Style.BRIGHT} 200 OK {Style.RESET_ALL}                  "
+                    f"{Fore.YELLOW+Style.BRIGHT} {str(e)} {Style.RESET_ALL}"
                 )
 
-                return True
-
-        is_valid = await self.check_connection(proxy)
-        if not is_valid:
+        return None
+    
+    async def process_check_connection(self, token: str, use_proxy: bool, rotate_proxy: bool):
+        while True:
+            proxy = self.get_next_proxy_for_account(token) if use_proxy else None
             self.log(
                 f"{Fore.CYAN+Style.BRIGHT}Proxy     :{Style.RESET_ALL}"
                 f"{Fore.WHITE+Style.BRIGHT} {proxy} {Style.RESET_ALL}"
-                f"{Fore.MAGENTA+Style.BRIGHT}-{Style.RESET_ALL}"
-                f"{Fore.RED+Style.BRIGHT} Not 200 OK {Style.RESET_ALL}          "
             )
-            return False
-        
-        self.log(
-            f"{Fore.CYAN+Style.BRIGHT}Proxy     :{Style.RESET_ALL}"
-            f"{Fore.WHITE+Style.BRIGHT} {proxy} {Style.RESET_ALL}"
-            f"{Fore.MAGENTA+Style.BRIGHT}-{Style.RESET_ALL}"
-            f"{Fore.GREEN+Style.BRIGHT} 200 OK {Style.RESET_ALL}                  "
-        )
 
-        return True
+            is_valid = await self.check_connection(proxy)
+            if is_valid:
+                return True
+            
+            if rotate_proxy:
+                proxy = self.rotate_proxy_for_account(token)
+                await asyncio.sleep(5)
+                continue
+
+            return False
         
     async def process_accounts(self, token: str, use_proxy: bool, rotate_proxy: bool):
         is_valid = await self.process_check_connection(token, use_proxy, rotate_proxy)
@@ -408,41 +385,32 @@ class Unich:
                     f"{Fore.CYAN+Style.BRIGHT}Balance   :{Style.RESET_ALL}"
                     f"{Fore.WHITE+Style.BRIGHT} {balance} FD Points {Style.RESET_ALL}"
                 )
-            else:
-                self.log(
-                    f"{Fore.CYAN+Style.BRIGHT}Status    :{Style.RESET_ALL}"
-                    f"{Fore.RED+Style.BRIGHT} GET User Data Failed {Style.RESET_ALL}"
-                )
 
-            await self.ref_confirm(token, proxy)
+            await self.apply_ref(token, proxy)
 
             mining = await self.recent_mining(token, proxy)
             if mining:
                 is_mining = mining.get("data", {}).get("isMining", False)
 
-                if not is_mining:
+                if is_mining:
+                    self.log(
+                        f"{Fore.CYAN+Style.BRIGHT}Mining    :{Style.RESET_ALL}"
+                        f"{Fore.YELLOW+Style.BRIGHT} Already Started {Style.RESET_ALL}"
+                    )
+
+                else:
                     start = await self.start_mining(token, proxy)
                     if start and start.get("code") == "OK":
                         self.log(
                             f"{Fore.CYAN+Style.BRIGHT}Mining    :{Style.RESET_ALL}"
                             f"{Fore.GREEN+Style.BRIGHT} Started Successfully {Style.RESET_ALL}"
                         )
-                else:
-                    self.log(
-                        f"{Fore.CYAN+Style.BRIGHT}Mining    :{Style.RESET_ALL}"
-                        f"{Fore.YELLOW+Style.BRIGHT} Already Started {Style.RESET_ALL}"
-                    )
-
-            else:
-                self.log(
-                    f"{Fore.CYAN+Style.BRIGHT}Mining    :{Style.RESET_ALL}"
-                    f"{Fore.RED+Style.BRIGHT} GET Recent Data Failed {Style.RESET_ALL}"
-                )
 
             task_lists = await self.task_lists(token, proxy)
             if task_lists:
-                self.log(f"{Fore.CYAN+Style.BRIGHT}Task Lists:{Style.RESET_ALL}")
                 tasks = task_lists.get("data", {}).get("items", [])
+
+                self.log(f"{Fore.CYAN+Style.BRIGHT}Task Lists:{Style.RESET_ALL}")
 
                 if tasks:
                     for task in tasks:
@@ -460,7 +428,7 @@ class Unich:
                                 )
                                 continue
 
-                            claim = await self.claim_tasks(token, task_id, proxy)
+                            claim = await self.claim_tasks(token, task_id, title, proxy)
                             if claim and claim.get("code") == "OK":
                                 self.log(
                                     f"{Fore.MAGENTA+Style.BRIGHT}   >{Style.RESET_ALL}"
@@ -470,17 +438,6 @@ class Unich:
                                     f"{Fore.CYAN + Style.BRIGHT}Reward:{Style.RESET_ALL}"
                                     f"{Fore.WHITE + Style.BRIGHT} {task_reward} FD Points {Style.RESET_ALL}"
                                 )
-                            else:
-                                self.log(
-                                    f"{Fore.MAGENTA+Style.BRIGHT}   >{Style.RESET_ALL}"
-                                    f"{Fore.WHITE+Style.BRIGHT} {title} {Style.RESET_ALL}"
-                                    f"{Fore.RED+Style.BRIGHT}Claim Failed{Style.RESET_ALL}"
-                                )
-            else:
-                self.log(
-                    f"{Fore.CYAN+Style.BRIGHT}Task Lists:{Style.RESET_ALL}"
-                    f"{Fore.RED+Style.BRIGHT} GET List Data Failed {Style.RESET_ALL}"
-                )
 
     async def main(self):
         try:
@@ -504,7 +461,7 @@ class Unich:
                 if use_proxy:
                     await self.load_proxies(use_proxy_choice)
                 
-                separator = "=" * 24
+                separator = "=" * 23
                 for idx, token in enumerate(tokens, start=1):
                     if token:
                         self.log(
@@ -514,6 +471,23 @@ class Unich:
                             f"{Fore.WHITE + Style.BRIGHT} {len(tokens)} {Style.RESET_ALL}"
                             f"{Fore.CYAN + Style.BRIGHT}]{separator}{Style.RESET_ALL}"
                         )
+
+                        signed_time = self.decode_token(token)
+                        if not signed_time:
+                            self.log(
+                                f"{Fore.CYAN+Style.BRIGHT}Status    :{Style.RESET_ALL}"
+                                f"{Fore.RED+Style.BRIGHT} Invalid Token Data {Style.RESET_ALL}"
+                            )
+                            continue
+
+                        is_valid = self.check_token_status(signed_time)
+                        if not is_valid:
+                            self.log(
+                                f"{Fore.CYAN+Style.BRIGHT}Status    :{Style.RESET_ALL}"
+                                f"{Fore.RED+Style.BRIGHT} Token Already Expired {Style.RESET_ALL}"
+                            )
+                            continue
+
                         await self.process_accounts(token, use_proxy, rotate_proxy)
                         await asyncio.sleep(3)
 
