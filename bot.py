@@ -181,9 +181,9 @@ class Unich:
     
     async def check_connection(self, proxy=None):
         try:
-            response = await asyncio.to_thread(requests.get, url="https://unich.com", headers={}, proxy=proxy, timeout=60, impersonate="chrome110", verify=False)    
+            response = await asyncio.to_thread(requests.post, url="http://ip-api.com/json", proxy=proxy, timeout=30)    
             response.raise_for_status()
-            return True
+            return response.json()
         except Exception as e:
             self.log(
                 f"{Fore.CYAN+Style.BRIGHT}Status    :{Style.RESET_ALL}"
@@ -357,7 +357,7 @@ class Unich:
             )
 
             is_valid = await self.check_connection(proxy)
-            if is_valid:
+            if is_valid and is_valid.get("status") == "success":
                 return True
             
             if rotate_proxy:
